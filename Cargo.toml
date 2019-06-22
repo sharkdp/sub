@@ -1,7 +1,9 @@
 [package]
 name = "sub"
+description = "A command-line tool for string substitutions"
 version = "0.1.0"
 authors = ["David Peter <mail@david-peter.de>"]
 edition = "2018"
 
 [dependencies]
+clap = "2"
