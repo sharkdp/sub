@@ -23,19 +23,27 @@ impl SubError {
 
 type Result<T> = std::result::Result<T, SubError>;
 
-fn run(pattern: &str, replacement: &str) -> Result<()> {
-    let stdin = io::stdin();
-    let stdout = io::stdout();
-    let input = stdin.lock();
-    let mut output = stdout.lock();
+#[derive(Debug, Clone)]
+struct Sub<'a> {
+    pattern: &'a str,
+    replacement: &'a str,
+}
 
-    for line in input.lines() {
-        let line = line.map_err(|_| SubError::InvalidUTF8)?;
-        let new_line = line.replace(pattern, replacement);
-        writeln!(output, "{}", new_line).map_err(|_| SubError::FailedToWrite)?;
+impl<'a> Sub<'a> {
+    fn run(&self) -> Result<()> {
+        let stdin = io::stdin();
+        let stdout = io::stdout();
+        let input = stdin.lock();
+        let mut output = stdout.lock();
+
+        for line in input.lines() {
+            let line = line.map_err(|_| SubError::InvalidUTF8)?;
+            let new_line = line.replace(self.pattern, self.replacement);
+            writeln!(output, "{}", new_line).map_err(|_| SubError::FailedToWrite)?;
+        }
+
+        Ok(())
     }
-
-    Ok(())
 }
 
 fn main() {
@@ -56,10 +64,11 @@ fn main() {
 
     let matches = app.get_matches();
 
-    let pattern = matches.value_of("pattern").expect("required argument");
-    let replacement = matches.value_of("replacement").expect("required argument");
-
-    let result = run(pattern, replacement);
+    let sub = Sub {
+        pattern: matches.value_of("pattern").expect("required argument"),
+        replacement: matches.value_of("replacement").expect("required argument"),
+    };
+    let result = sub.run();
 
     match result {
         Err(e) => {
