@@ -4,10 +4,13 @@ use std::process;
 
 use clap::{crate_description, crate_name, crate_version, App, AppSettings, Arg};
 
-#[derive(Debug, Clone, Copy)]
+use regex::RegexBuilder;
+
+#[derive(Debug, Clone)]
 enum SubError {
     FailedToWrite,
     InvalidUTF8,
+    RegexError(regex::Error),
 }
 
 impl SubError {
@@ -17,6 +20,7 @@ impl SubError {
         match self {
             FailedToWrite => "Output stream has been closed".into(),
             InvalidUTF8 => "Input contains invalid UTF-8".into(),
+            RegexError(e) => format!("{}", e),
         }
     }
 }
@@ -31,6 +35,10 @@ struct Sub<'a> {
 
 impl<'a> Sub<'a> {
     fn run(&self) -> Result<()> {
+        let re = RegexBuilder::new(self.pattern)
+            .build()
+            .map_err(SubError::RegexError)?;
+
         let stdin = io::stdin();
         let stdout = io::stdout();
         let input = stdin.lock();
@@ -38,7 +46,7 @@ impl<'a> Sub<'a> {
 
         for line in input.lines() {
             let line = line.map_err(|_| SubError::InvalidUTF8)?;
-            let new_line = line.replace(self.pattern, self.replacement);
+            let new_line = re.replace_all(&line, self.replacement);
             writeln!(output, "{}", new_line).map_err(|_| SubError::FailedToWrite)?;
         }
 
