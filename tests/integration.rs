@@ -9,6 +9,7 @@ struct ReplacementTest {
     pattern: &'static str,
     replacement: &'static str,
     input: String,
+    args: Vec<String>,
 }
 
 impl ReplacementTest {
@@ -17,7 +18,13 @@ impl ReplacementTest {
             pattern,
             replacement,
             input: String::new(),
+            args: vec![],
         }
+    }
+
+    pub fn arg(&mut self, argument: &str) -> &mut Self {
+        self.args.push(argument.to_owned());
+        self
     }
 
     pub fn for_input(&mut self, input: &str) -> &mut Self {
@@ -27,6 +34,7 @@ impl ReplacementTest {
 
     pub fn expect_output(&mut self, output: &'static str) -> &mut Self {
         sub()
+            .args(&self.args)
             .arg(self.pattern)
             .arg(self.replacement)
             .with_stdin()
@@ -65,6 +73,18 @@ fn capture_group_replacement() {
         .expect_output("foo\n")
         .for_input("fooABC\n")
         .expect_output("fooABC\n");
+}
+
+#[test]
+fn case_insensitive_replacement() {
+    ReplacementTest::new(r"foo", "bar")
+        .for_input("foo Foo")
+        .expect_output("bar Foo");
+
+    ReplacementTest::new(r"foo", "bar")
+        .arg("--ignore-case")
+        .for_input("foo Foo")
+        .expect_output("bar bar");
 }
 
 #[test]

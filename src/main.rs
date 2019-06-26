@@ -31,11 +31,13 @@ type Result<T> = std::result::Result<T, SubError>;
 struct Sub<'a> {
     pattern: &'a str,
     replacement: &'a str,
+    ignore_case: bool,
 }
 
 impl<'a> Sub<'a> {
     fn run(&self) -> Result<()> {
         let re = RegexBuilder::new(self.pattern)
+            .case_insensitive(self.ignore_case)
             .build()
             .map_err(SubError::RegexError)?;
 
@@ -68,6 +70,12 @@ fn main() {
         .about(crate_description!())
         .global_setting(AppSettings::ColoredHelp)
         .arg(
+            Arg::with_name("ignore-case")
+                .long("ignore-case")
+                .short("I")
+                .help("Use case-insensitive search"),
+        )
+        .arg(
             Arg::with_name("pattern")
                 .required(true)
                 .help("The search pattern that should be replaced"),
@@ -83,6 +91,7 @@ fn main() {
     let sub = Sub {
         pattern: matches.value_of("pattern").expect("required argument"),
         replacement: matches.value_of("replacement").expect("required argument"),
+        ignore_case: matches.is_present("ignore-case"),
     };
     let result = sub.run();
 
