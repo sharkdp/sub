@@ -1,0 +1,23 @@
+environment:
+  global:
+    TARGET: x86_64-pc-windows-msvc
+    RUST_VERSION: stable
+    CRATE_NAME: sub
+    CARGO_HOME: "c:\\cargo"
+    RUSTUP_HOME: "c:\\rustup"
+
+install:
+  - appveyor DownloadFile https://win.rustup.rs/ -FileName rustup-init.exe
+  - rustup-init.exe -y --default-host %TARGET%
+  - set PATH=%PATH%;C:\cargo\bin
+  - rustc -Vv
+  - cargo -V
+
+build: false
+test_script:
+  - cargo test --target %TARGET% --verbose
+  - cargo run --target %TARGET% -- --help
+
+cache:
+  - C:\Users\appveyor\.cargo\registry
+  - target
