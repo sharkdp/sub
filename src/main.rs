@@ -41,13 +41,21 @@ impl<'a> Sub<'a> {
 
         let stdin = io::stdin();
         let stdout = io::stdout();
-        let input = stdin.lock();
+        let mut input = stdin.lock();
         let mut output = stdout.lock();
 
-        for line in input.lines() {
-            let line = line.map_err(|_| SubError::InvalidUTF8)?;
-            let new_line = re.replace_all(&line, self.replacement);
-            writeln!(output, "{}", new_line).map_err(|_| SubError::FailedToWrite)?;
+        let mut line_buffer = String::new();
+        loop {
+            line_buffer.clear();
+            let num_bytes = input
+                .read_line(&mut line_buffer)
+                .map_err(|_| SubError::InvalidUTF8)?;
+            if num_bytes == 0 {
+                break;
+            }
+
+            let new_line = re.replace_all(&line_buffer, self.replacement);
+            write!(output, "{}", new_line).map_err(|_| SubError::FailedToWrite)?;
         }
 
         Ok(())

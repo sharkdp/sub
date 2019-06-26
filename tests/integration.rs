@@ -78,3 +78,17 @@ fn fails_for_non_utf8_input() {
         .failure()
         .code(1);
 }
+
+#[test]
+fn no_trailing_newline() {
+    ReplacementTest::new(r"foo", "bar")
+        .for_input("foo other foo\nfoo")
+        .expect_output("bar other bar\nbar");
+}
+
+#[test]
+fn windows_newline() {
+    ReplacementTest::new(r"foo", "bar")
+        .for_input("foo other foo\r\nfoo\r\n")
+        .expect_output("bar other bar\r\nbar\r\n");
+}
