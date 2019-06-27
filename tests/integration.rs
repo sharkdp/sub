@@ -1,5 +1,6 @@
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
+use std::fs;
 use std::io::Write;
 use std::process::Command;
 use tempfile;
@@ -172,4 +173,21 @@ fn ignores_directory_arguments() {
         .arg(dir.path())
         .assert()
         .success();
+}
+
+#[test]
+fn modifies_files_in_place() {
+    let mut file = get_tempfile();
+    file.write_all(b"foo other foo\nfoo\n").unwrap();
+
+    sub()
+        .arg("--in-place")
+        .arg("foo")
+        .arg("bar")
+        .arg(file.path())
+        .assert()
+        .success();
+
+    let contents = fs::read_to_string(file.path()).unwrap();
+    assert_eq!(contents, "bar other bar\nbar\n");
 }
