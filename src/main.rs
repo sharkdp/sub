@@ -87,10 +87,10 @@ fn main() {
     let result = sub.run();
 
     match result {
+        Ok(_) | Err(SubError::FailedToWrite) => {}
         Err(e) => {
             eprintln!("[sub error]: {}", e.message());
             process::exit(1);
         }
-        Ok(_) => {}
     }
 }
