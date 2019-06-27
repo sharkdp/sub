@@ -1,5 +1,8 @@
 use assert_cmd::prelude::*;
+use predicates::prelude::*;
+use std::io::Write;
 use std::process::Command;
+use tempfile;
 
 fn sub() -> Command {
     Command::cargo_bin("sub").unwrap()
@@ -111,4 +114,62 @@ fn windows_newline() {
     ReplacementTest::new(r"foo", "bar")
         .for_input("foo other foo\r\nfoo\r\n")
         .expect_output("bar other bar\r\nbar\r\n");
+}
+
+fn get_tempfile() -> tempfile::NamedTempFile {
+    tempfile::Builder::new()
+        .prefix("sub_test")
+        .suffix(".txt")
+        .tempfile()
+        .unwrap()
+}
+
+#[test]
+fn reads_from_files() {
+    let mut file1 = get_tempfile();
+    file1.write_all(b"foo other foo\nfoo\n").unwrap();
+
+    let mut file2 = get_tempfile();
+    file2.write_all(b"more dummy text foo\n").unwrap();
+
+    sub()
+        .arg("foo")
+        .arg("bar")
+        .arg(file1.path())
+        .arg(file2.path())
+        .assert()
+        .success()
+        .stdout("bar other bar\nbar\nmore dummy text bar\n");
+}
+
+#[test]
+fn fails_if_file_not_found() {
+    let input_file = get_tempfile();
+
+    let mut path_nonexistent = input_file.path().to_path_buf();
+    path_nonexistent.push(".dummy");
+
+    sub()
+        .arg("foo")
+        .arg("bar")
+        .arg(path_nonexistent)
+        .assert()
+        .stderr(predicate::str::contains("Could not open"))
+        .failure()
+        .code(1);
+}
+
+#[test]
+fn ignores_directory_arguments() {
+    let dir = tempfile::Builder::new()
+        .prefix("sub_test")
+        .tempdir()
+        .unwrap();
+
+    sub()
+        .arg("foo")
+        .arg("bar")
+        .arg(dir.path())
+        .assert()
+        .success();
 }
