@@ -1,8 +1,13 @@
 [package]
-name = "sub"
-description = "A command-line tool for string substitutions"
-version = "0.1.0"
 authors = ["David Peter <mail@david-peter.de>"]
+categories = ["command-line-utilities"]
+description = "A command-line tool for string substitutions"
+homepage = "https://github.com/sharkdp/sub"
+license = "MIT/Apache-2.0"
+name = "sub"
+readme = "README.md"
+repository = "https://github.com/sharkdp/sub"
+version = "0.1.0"
 edition = "2018"
 
 [dependencies]
