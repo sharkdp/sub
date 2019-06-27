@@ -11,6 +11,8 @@ use regex::RegexBuilder;
 
 use tempfile;
 
+use atty;
+
 #[derive(Debug)]
 enum SubError {
     FailedToWrite,
@@ -139,8 +141,13 @@ impl<'a> Sub<'a> {
                     unreachable!();
                 }
             } else {
-                let mut writer = stdout.lock();
-                self.replace(&mut reader, &mut writer)?;
+                if atty::is(atty::Stream::Stdout) {
+                    let mut writer = stdout.lock();
+                    self.replace(&mut reader, &mut writer)?;
+                } else {
+                    let mut writer = io::BufWriter::new(stdout.lock());
+                    self.replace(&mut reader, &mut writer)?;
+                };
             };
         }
 
