@@ -65,13 +65,19 @@ struct Sub<'a> {
     pattern: &'a str,
     replacement: &'a str,
     in_place: bool,
+    whole_word: bool,
     ignore_case: bool,
     inputs: Vec<Input<'a>>,
 }
 
 impl<'a> Sub<'a> {
     fn replace(&self, reader: &mut dyn BufRead, writer: &mut dyn Write) -> Result<()> {
-        let re = RegexBuilder::new(self.pattern)
+        let pattern = if self.whole_word {
+            r"\b".to_string() + self.pattern + r"\b"
+        } else {
+            self.pattern.into()
+        };
+        let re = RegexBuilder::new(&pattern)
             .case_insensitive(self.ignore_case)
             .build()
             .map_err(SubError::RegexError)?;
@@ -168,6 +174,12 @@ fn main() {
                 .help("Edit files in place"),
         )
         .arg(
+            Arg::with_name("whole-word")
+                .long("whole-word")
+                .short("w")
+                .help("Only match the pattern on whole words"),
+        )
+        .arg(
             Arg::with_name("ignore-case")
                 .long("ignore-case")
                 .short("I")
@@ -195,6 +207,7 @@ fn main() {
         pattern: matches.value_of("pattern").expect("required argument"),
         replacement: matches.value_of("replacement").expect("required argument"),
         in_place: matches.is_present("in-place"),
+        whole_word: matches.is_present("whole-word"),
         ignore_case: matches.is_present("ignore-case"),
         inputs: matches
             .values_of_os("file")

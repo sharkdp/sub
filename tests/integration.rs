@@ -58,8 +58,9 @@ fn basic_replacement() {
 }
 
 #[test]
-fn regex_replacement() {
-    ReplacementTest::new(r"\bfoo\b", "bar")
+fn whole_word_replacement() {
+    ReplacementTest::new(r"foo", "bar")
+        .arg("--whole-word")
         .for_input("foo, foo.\n")
         .expect_output("bar, bar.\n")
         .for_input("foobar\n")
