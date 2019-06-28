@@ -93,6 +93,14 @@ fn case_insensitive_replacement() {
 }
 
 #[test]
+fn match_replacement() {
+    ReplacementTest::new(r"foo", "bar")
+        .arg("--match=^#")
+        .for_input("foo\n# here: foo\nfoo\n# and here: foo\n")
+        .expect_output("foo\n# here: bar\nfoo\n# and here: bar\n");
+}
+
+#[test]
 fn fails_for_non_utf8_input() {
     sub()
         .arg("dummy")

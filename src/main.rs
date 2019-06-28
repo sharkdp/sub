@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, File};
 use std::io;
@@ -66,6 +67,7 @@ struct Sub<'a> {
     replacement: &'a str,
     in_place: bool,
     whole_word: bool,
+    match_pattern: Option<&'a str>,
     ignore_case: bool,
     inputs: Vec<Input<'a>>,
 }
@@ -82,6 +84,16 @@ impl<'a> Sub<'a> {
             .build()
             .map_err(SubError::RegexError)?;
 
+        let match_re = self
+            .match_pattern
+            .map(|match_pattern| {
+                RegexBuilder::new(&match_pattern)
+                    .case_insensitive(self.ignore_case)
+                    .build()
+                    .map_err(SubError::RegexError)
+            })
+            .transpose()?;
+
         let mut line_buffer = String::new();
         loop {
             line_buffer.clear();
@@ -92,7 +104,14 @@ impl<'a> Sub<'a> {
                 break;
             }
 
-            let new_line = re.replace_all(&line_buffer, self.replacement);
+            let new_line = if match_re
+                .as_ref()
+                .map_or(true, |match_re| match_re.is_match(&line_buffer))
+            {
+                re.replace_all(&line_buffer, self.replacement)
+            } else {
+                Cow::from(&line_buffer)
+            };
             write!(writer, "{}", new_line).map_err(|_| SubError::FailedToWrite)?;
         }
 
@@ -166,6 +185,7 @@ fn main() {
         .version(crate_version!())
         .about(crate_description!())
         .global_setting(AppSettings::ColoredHelp)
+        .global_setting(AppSettings::UnifiedHelpMessage)
         .arg(
             Arg::with_name("in-place")
                 .long("in-place")
@@ -178,6 +198,14 @@ fn main() {
                 .long("whole-word")
                 .short("w")
                 .help("Only match the pattern on whole words"),
+        )
+        .arg(
+            Arg::with_name("match")
+                .long("match")
+                .short("m")
+                .takes_value(true)
+                .value_name("pattern")
+                .help("Only substitute on lines that match the pattern"),
         )
         .arg(
             Arg::with_name("ignore-case")
@@ -208,6 +236,7 @@ fn main() {
         replacement: matches.value_of("replacement").expect("required argument"),
         in_place: matches.is_present("in-place"),
         whole_word: matches.is_present("whole-word"),
+        match_pattern: matches.value_of("match"),
         ignore_case: matches.is_present("ignore-case"),
         inputs: matches
             .values_of_os("file")
