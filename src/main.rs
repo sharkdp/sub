@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::ffi::{OsStr, OsString};
+use std::fmt;
 use std::fs::{self, File};
 use std::io;
 use std::io::prelude::*;
@@ -26,26 +27,29 @@ enum SubError {
     CouldNotSetPermissions(OsString),
 }
 
-impl SubError {
-    pub fn message(self) -> String {
+impl fmt::Display for SubError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use SubError::*;
 
         match self {
-            FailedToWrite => "Output stream has been closed".into(),
-            InvalidUTF8 => "Input contains invalid UTF-8".into(),
-            RegexError(e) => format!("{}", e),
-            CouldNotOpenFile(path) => format!("Could not open file '{}'", path.to_string_lossy()),
-            CouldNotCreateTempFile => "Failed to create temporary file".into(),
-            CouldNotModifyInplace(path, io_error) => format!(
+            FailedToWrite => write!(f, "Output stream has been closed"),
+            InvalidUTF8 => write!(f, "Input contains invalid UTF-8"),
+            RegexError(e) => write!(f, "{}", e),
+            CouldNotOpenFile(path) => write!(f, "Could not open file '{}'", path.to_string_lossy()),
+            CouldNotCreateTempFile => write!(f, "Failed to create temporary file"),
+            CouldNotModifyInplace(path, io_error) => write!(
+                f,
                 "Could not modify the file '{}' in-place: {}",
                 path.to_string_lossy(),
                 io_error
             ),
-            CouldNotReadMetadata(path) => format!(
+            CouldNotReadMetadata(path) => write!(
+                f,
                 "Could not read metadata from file '{}'",
                 path.to_string_lossy()
             ),
-            CouldNotSetPermissions(path) => format!(
+            CouldNotSetPermissions(path) => write!(
+                f,
                 "Could not set permissions of file '{}'",
                 path.to_string_lossy()
             ),
@@ -247,7 +251,7 @@ fn main() {
     match result {
         Ok(_) | Err(SubError::FailedToWrite) => {}
         Err(e) => {
-            eprintln!("[sub error]: {}", e.message());
+            eprintln!("[sub error]: {}", e);
             process::exit(1);
         }
     }
