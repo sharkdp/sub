@@ -1,11 +1,12 @@
 use std::borrow::Cow;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::fmt;
 use std::fs::{self, File};
 use std::io;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process;
+use std::error::Error;
 
 use clap::{crate_description, crate_name, crate_version, App, AppSettings, Arg};
 
@@ -17,14 +18,43 @@ use atty;
 
 #[derive(Debug)]
 enum SubError {
-    FailedToWrite,
-    InvalidUTF8,
+    FailedToWrite(io::Error),
+    InvalidUTF8(io::Error),
     RegexError(regex::Error),
-    CouldNotOpenFile(OsString),
-    CouldNotCreateTempFile,
-    CouldNotModifyInplace(OsString, io::Error),
-    CouldNotReadMetadata(OsString),
-    CouldNotSetPermissions(OsString),
+    CouldNotOpenFile(io::Error),
+    CouldNotCreateTempFile(io::Error),
+    CouldNotModifyInplace(io::Error),
+    CouldNotReadMetadata(io::Error),
+    CouldNotSetPermissions(io::Error),
+}
+
+impl Error for SubError {
+
+    fn description(&self) -> &str {
+        match self {
+            SubError::FailedToWrite(e) => e.description(),
+            SubError::InvalidUTF8(_) => "Input contains invalid UTF-8",
+            SubError::RegexError(e) => e.description(),
+            SubError::CouldNotOpenFile(_) => "Could not open file",
+            SubError::CouldNotCreateTempFile(_) => "Failed to create temporary file",
+            SubError::CouldNotModifyInplace(_) => "Could not modify the file",
+            SubError::CouldNotReadMetadata(_) => "Could not read metadata",
+            SubError::CouldNotSetPermissions(_) => "Could not set permissions",
+        }
+    }
+
+    fn cause(&self) -> Option<&dyn Error> {
+        match self {
+            SubError::FailedToWrite(e) => Some(e),
+            SubError::InvalidUTF8(e) => Some(e),
+            SubError::RegexError(e) => Some(e),
+            SubError::CouldNotOpenFile(e) => Some(e),
+            SubError::CouldNotCreateTempFile(e) => Some(e),
+            SubError::CouldNotModifyInplace(e) => Some(e),
+            SubError::CouldNotReadMetadata(e) => Some(e),
+            SubError::CouldNotSetPermissions(e) => Some(e),
+        }
+    }
 }
 
 impl fmt::Display for SubError {
@@ -32,26 +62,26 @@ impl fmt::Display for SubError {
         use SubError::*;
 
         match self {
-            FailedToWrite => write!(f, "Output stream has been closed"),
-            InvalidUTF8 => write!(f, "Input contains invalid UTF-8"),
+            FailedToWrite(e) => write!(f, "Output stream has been closed: {}", e),
+            InvalidUTF8(e) => write!(f, "Input contains invalid UTF-8: {}", e),
             RegexError(e) => write!(f, "{}", e),
-            CouldNotOpenFile(path) => write!(f, "Could not open file '{}'", path.to_string_lossy()),
-            CouldNotCreateTempFile => write!(f, "Failed to create temporary file"),
-            CouldNotModifyInplace(path, io_error) => write!(
+            CouldNotOpenFile(e) => write!(f, "Could not open file '{}'", e),
+            CouldNotCreateTempFile(e) => write!(f, "Failed to create temporary file: {}", e),
+            CouldNotModifyInplace(e) => write!(
                 f,
-                "Could not modify the file '{}' in-place: {}",
-                path.to_string_lossy(),
-                io_error
+                "Could not modify the file in-place: {}",
+                //path.to_string_lossy(),
+                e
             ),
-            CouldNotReadMetadata(path) => write!(
+            CouldNotReadMetadata(e) => write!(
                 f,
                 "Could not read metadata from file '{}'",
-                path.to_string_lossy()
+                e
             ),
-            CouldNotSetPermissions(path) => write!(
+            CouldNotSetPermissions(e) => write!(
                 f,
                 "Could not set permissions of file '{}'",
-                path.to_string_lossy()
+                e
             ),
         }
     }
@@ -103,7 +133,7 @@ impl<'a> Sub<'a> {
             line_buffer.clear();
             let num_bytes = reader
                 .read_line(&mut line_buffer)
-                .map_err(|_| SubError::InvalidUTF8)?;
+                .map_err(SubError::InvalidUTF8)?;
             if num_bytes == 0 {
                 break;
             }
@@ -116,7 +146,7 @@ impl<'a> Sub<'a> {
             } else {
                 Cow::from(&line_buffer)
             };
-            write!(writer, "{}", new_line).map_err(|_| SubError::FailedToWrite)?;
+            write!(writer, "{}", new_line).map_err(SubError::FailedToWrite)?;
         }
 
         Ok(())
@@ -139,7 +169,7 @@ impl<'a> Sub<'a> {
                     }
 
                     let file =
-                        File::open(path).map_err(|_| SubError::CouldNotOpenFile(path.into()))?;
+                        File::open(path).map_err(SubError::CouldNotOpenFile)?;
 
                     Box::new(io::BufReader::new(file))
                 }
@@ -150,22 +180,20 @@ impl<'a> Sub<'a> {
                     let output_file = tempfile::Builder::new()
                         .prefix("sub_")
                         .tempfile()
-                        .map_err(|_| SubError::CouldNotCreateTempFile)?;
+                        .map_err(SubError::CouldNotCreateTempFile)?;
                     let mut writer = io::BufWriter::new(&output_file);
                     self.replace(&mut reader, &mut writer)?;
 
                     drop(writer); // close the input file
 
                     let perms = fs::metadata(path)
-                        .map_err(|_| SubError::CouldNotReadMetadata(path.into()))?
+                        .map_err(SubError::CouldNotReadMetadata)?
                         .permissions();
 
-                    fs::set_permissions(output_file.as_ref(), perms).map_err(|_| {
-                        SubError::CouldNotSetPermissions(output_file.as_ref().into())
-                    })?;
+                    fs::set_permissions(output_file.as_ref(), perms).map_err(SubError::CouldNotSetPermissions)?;
 
                     fs::copy(output_file.as_ref(), &path)
-                        .map_err(|e| SubError::CouldNotModifyInplace(path.into(), e))?;
+                        .map_err(SubError::CouldNotModifyInplace)?;
                 } else {
                     unreachable!();
                 }
@@ -249,7 +277,7 @@ fn main() {
     let result = sub.run();
 
     match result {
-        Ok(_) | Err(SubError::FailedToWrite) => {}
+        Ok(_) | Err(SubError::FailedToWrite(_)) => {}
         Err(e) => {
             eprintln!("[sub error]: {}", e);
             process::exit(1);
