@@ -1,12 +1,11 @@
 use std::borrow::Cow;
 use std::ffi::OsStr;
-use std::fmt;
+//use std::fmt;
 use std::fs::{self, File};
 use std::io;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process;
-use std::error::Error;
 
 use clap::{crate_description, crate_name, crate_version, App, AppSettings, Arg};
 
@@ -16,76 +15,8 @@ use tempfile;
 
 use atty;
 
-#[derive(Debug)]
-enum SubError {
-    FailedToWrite(io::Error),
-    InvalidUTF8(io::Error),
-    RegexError(regex::Error),
-    CouldNotOpenFile(io::Error),
-    CouldNotCreateTempFile(io::Error),
-    CouldNotModifyInplace(io::Error),
-    CouldNotReadMetadata(io::Error),
-    CouldNotSetPermissions(io::Error),
-}
-
-impl Error for SubError {
-
-    fn description(&self) -> &str {
-        match self {
-            SubError::FailedToWrite(e) => e.description(),
-            SubError::InvalidUTF8(_) => "Input contains invalid UTF-8",
-            SubError::RegexError(e) => e.description(),
-            SubError::CouldNotOpenFile(_) => "Could not open file",
-            SubError::CouldNotCreateTempFile(_) => "Failed to create temporary file",
-            SubError::CouldNotModifyInplace(_) => "Could not modify the file",
-            SubError::CouldNotReadMetadata(_) => "Could not read metadata",
-            SubError::CouldNotSetPermissions(_) => "Could not set permissions",
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn Error> {
-        match self {
-            SubError::FailedToWrite(e) => Some(e),
-            SubError::InvalidUTF8(e) => Some(e),
-            SubError::RegexError(e) => Some(e),
-            SubError::CouldNotOpenFile(e) => Some(e),
-            SubError::CouldNotCreateTempFile(e) => Some(e),
-            SubError::CouldNotModifyInplace(e) => Some(e),
-            SubError::CouldNotReadMetadata(e) => Some(e),
-            SubError::CouldNotSetPermissions(e) => Some(e),
-        }
-    }
-}
-
-impl fmt::Display for SubError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use SubError::*;
-
-        match self {
-            FailedToWrite(e) => write!(f, "Output stream has been closed: {}", e),
-            InvalidUTF8(e) => write!(f, "Input contains invalid UTF-8: {}", e),
-            RegexError(e) => write!(f, "{}", e),
-            CouldNotOpenFile(e) => write!(f, "Could not open file '{}'", e),
-            CouldNotCreateTempFile(e) => write!(f, "Failed to create temporary file: {}", e),
-            CouldNotModifyInplace(e) => write!(
-                f,
-                "Could not modify the file in-place: {}",
-                //path.to_string_lossy(),
-                e
-            ),
-            CouldNotReadMetadata(e) => write!(
-                f,
-                "Could not read metadata from file '{}'",
-                e
-            ),
-            CouldNotSetPermissions(e) => write!(
-                f,
-                "Could not set permissions of file '{}'",
-                e
-            ),
-        }
-    }
-}
+mod error;
+use error::SubError;
 
 type Result<T> = std::result::Result<T, SubError>;
 
@@ -116,7 +47,10 @@ impl<'a> Sub<'a> {
         let re = RegexBuilder::new(&pattern)
             .case_insensitive(self.ignore_case)
             .build()
-            .map_err(SubError::RegexError)?;
+            .map_err(|e| {
+                eprintln!("Not valid regex pattern");
+                SubError::RegexError(e)
+            })?;
 
         let match_re = self
             .match_pattern
@@ -124,7 +58,10 @@ impl<'a> Sub<'a> {
                 RegexBuilder::new(&match_pattern)
                     .case_insensitive(self.ignore_case)
                     .build()
-                    .map_err(SubError::RegexError)
+                    .map_err(|e| {
+                        eprintln!("Cannot build regex pattern");
+                        SubError::RegexError(e)
+                    })
             })
             .transpose()?;
 
@@ -133,7 +70,10 @@ impl<'a> Sub<'a> {
             line_buffer.clear();
             let num_bytes = reader
                 .read_line(&mut line_buffer)
-                .map_err(SubError::InvalidUTF8)?;
+                .map_err(|e| {
+                    eprintln!("Cannot read UTF-8 string");
+                    SubError::InvalidUTF8(e)
+                })?;
             if num_bytes == 0 {
                 break;
             }
@@ -169,7 +109,10 @@ impl<'a> Sub<'a> {
                     }
 
                     let file =
-                        File::open(path).map_err(SubError::CouldNotOpenFile)?;
+                        File::open(path).map_err(|e| {
+                            eprintln!("Could not open file: {}", path.to_str().unwrap());
+                            SubError::CouldNotOpenFile(e)
+                        })?;
 
                     Box::new(io::BufReader::new(file))
                 }
@@ -180,20 +123,32 @@ impl<'a> Sub<'a> {
                     let output_file = tempfile::Builder::new()
                         .prefix("sub_")
                         .tempfile()
-                        .map_err(SubError::CouldNotCreateTempFile)?;
+                        .map_err(|e| {
+                            eprintln!("Could not create temp file: {}", path.to_str().unwrap());
+                            SubError::CouldNotCreateTempFile(e)
+                        })?;
                     let mut writer = io::BufWriter::new(&output_file);
                     self.replace(&mut reader, &mut writer)?;
 
                     drop(writer); // close the input file
 
                     let perms = fs::metadata(path)
-                        .map_err(SubError::CouldNotReadMetadata)?
+                        .map_err(|e| {
+                            eprintln!("Could not read metadata: {}", path.to_str().unwrap());
+                            SubError::CouldNotReadMetadata(e)
+                        })?
                         .permissions();
 
-                    fs::set_permissions(output_file.as_ref(), perms).map_err(SubError::CouldNotSetPermissions)?;
+                        fs::set_permissions(output_file.as_ref(), perms).map_err(|e| {
+                            eprintln!("Could not set permissions: {}", output_file.as_ref().to_str().unwrap());
+                            SubError::CouldNotSetPermissions(e)
+                        })?;
 
                     fs::copy(output_file.as_ref(), &path)
-                        .map_err(SubError::CouldNotModifyInplace)?;
+                        .map_err(|e| {
+                            eprintln!("Could not modify: {}", path.to_str().unwrap());
+                            SubError::CouldNotModifyInplace(e)
+                        })?;
                 } else {
                     unreachable!();
                 }
